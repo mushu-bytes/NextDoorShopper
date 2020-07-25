@@ -9,15 +9,15 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-
 import com.google.gson.Gson;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-public class GetOrderInfo implements RequestHandler <APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
+public class GetOrderInfo implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
     private final AmazonDynamoDB ddb = AmazonDynamoDBClientBuilder.defaultClient();
     private static final String TABLE_NAME = "orderlog";
 
@@ -28,53 +28,50 @@ public class GetOrderInfo implements RequestHandler <APIGatewayProxyRequestEvent
     }
 
     private APIGatewayProxyResponseEvent GetLocation() {
-//        Map<String, String> expressionAttributesNames = new HashMap<>();
-//        expressionAttributesNames.put("#OrderId", "OrderId");
-//        Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
-//        expressionAttributeValues.put(":OrderIdValue", new AttributeValue().withS("OrderId"));
-//
-//        QueryRequest request = new QueryRequest()
-//                .withTableName(TABLE_NAME)
-//                .withKeyConditionExpression("#OrderId = :OrderIdValue")
-//                .withExpressionAttributeNames(expressionAttributesNames)
-//                .withExpressionAttributeValues(expressionAttributeValues);
-//
-//        //result will be a list of a map
-//        QueryResult result = ddb.query(request);
-//        //convert it to json body string
-//        String json = new Gson().toJson(result.getItems());
-//        //return it as API Gateway Proxy Event
-//        return new APIGatewayProxyResponseEvent()
-//                .withBody(json);
-//Maybe use uuid
+
         //scan via addresses
         List<String> addresses = new ArrayList<>();
-        //scan attribute names based on address
-        Map<String, String> attributeNames = new HashMap<>();
-        attributeNames.put("#address", "address");
-        //get address values
-        Map<String, AttributeValue> attributeValues = new HashMap<String, AttributeValue>();
-        attributeValues.put(":addressVal", new AttributeValue().withS("address"));
-
+        //returns EVERYTHING
         ScanRequest scanRequest = new ScanRequest()
-                .withTableName(TABLE_NAME)
-                .withExpressionAttributeNames(attributeNames)
-                .withExpressionAttributeValues(attributeValues)
-                .withProjectionExpression("address");
+                .withTableName(TABLE_NAME);
 
-        Map<String, AttributeValue> lastKey = null;
-        ScanResult scanResult = ddb.scan(scanRequest);
-        List<Map<String, AttributeValue>> results = scanResult.getItems();
+        //keeps track of the last key it was on before it had to reset the scan result/results
+        //scanning can only send batches at a time
+        Map<String, AttributeValue> lastKey;
+
+        ScanResult scanResult;
+        List<Map<String, AttributeValue>> results = new ArrayList<>();
         do {
-            results.forEach(r ->addresses.add(r.get("address").getS()));
+            scanResult = ddb.scan(scanRequest);
+            //adding a list to a list
+            results.addAll(scanResult.getItems());
+            //keeps track of the key
             lastKey = scanResult.getLastEvaluatedKey();
+            //sets the key
             scanRequest.setExclusiveStartKey(lastKey);
-        } while(lastKey!= null);
+        } while (lastKey != null);
+        //convert map values from List<map<string, attributevalues>> to List<map<string, string>>
+        List<Map<String, String>> finalResults = new ArrayList<>();
 
-        String json = new Gson().toJson(results);
+        for (int i = 0; i < results.size(); i++) {
+            Map<String, String> newMap = results.get(i)
+                    .entrySet()
+                    .stream()
+                    .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().getS()));
+            finalResults.add(newMap);
+        }
+
+        //converts everything to a json body.
+        String json = new Gson().toJson(finalResults);
+        //For Cors
+        HashMap<String, String> header = new HashMap<>();
+        header.put("Access-Control-Allow-Origin", "*");
+        header.put("Access-Control-Allow-Credentials", "true");
         return new APIGatewayProxyResponseEvent()
-                .withBody(json);
+                .withBody(json)
+                .withHeaders(header)
+                .withStatusCode(200);
     }
 
-    }
+}
 
