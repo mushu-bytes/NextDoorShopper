@@ -1,5 +1,6 @@
 package helloworld;
 
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.model.*;
@@ -7,8 +8,6 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-
-
 import com.amazonaws.services.sns.AmazonSNS;
 import com.amazonaws.services.sns.AmazonSNSClientBuilder;
 import com.amazonaws.services.sns.model.PublishRequest;
@@ -24,17 +23,24 @@ import java.util.stream.Collectors;
 //move to us west 2
 
 public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
-    private final AmazonDynamoDB ddb = AmazonDynamoDBClientBuilder.defaultClient();
+    private final AmazonDynamoDB ddb = AmazonDynamoDBClientBuilder
+            .standard()
+            .withRegion(Regions.US_WEST_1)
+            .build();
+
     private static final String TABLE_NAME = "orderlog";
     private Map<String, String> jMap;
 
     HashMap <String, String> map = new HashMap<>();
-    private HashMap<String, AttributeValue> smsMap = new HashMap<>();
+    private HashMap<String, String> smsMap = new HashMap<>();
 
     private final AmazonSNS amazonSNS = AmazonSNSClientBuilder.defaultClient();
 
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
 
+        HashMap<String, String> header = new HashMap<>();
+        header.put("Access-Control-Allow-Origin", "*");
+        header.put("Access-Control-Allow-Credentials", "true");
 
         try {
             //parses the json body into a map
@@ -47,16 +53,25 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
                     .withStatusCode(500);
         }
         String OrderId = jMap.get("OrderId");
-        //update dynanodb
-        UpdateOrder(OrderId);
-        //send txt message to customer
         smsMap = queryForNamePhone(OrderId);
-        //updateCustomer(smsMap);
 
+        String availability = smsMap.get("availability");
+
+        if (availability.equals("Pending")){
+            return new APIGatewayProxyResponseEvent()
+                    .withBody("Order Taken")
+                    .withHeaders(header)
+                    .withStatusCode(400);
+        }
+        else{
+            System.out.println("Inside update customer");
+            //update dynanodb
+            //send txt message to customer
+            updateCustomer(smsMap);
+            UpdateOrder(OrderId);
+        }
         //For Cors
-        HashMap<String, String> header = new HashMap<>();
-        header.put("Access-Control-Allow-Origin", "*");
-        header.put("Access-Control-Allow-Credentials", "true");
+        System.out.println(header);
         //return it as API Gateway Proxy Event
         return new APIGatewayProxyResponseEvent()
                 .withBody("OK")
@@ -85,7 +100,7 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
 
 
     }
-    private HashMap queryForNamePhone(String OrderId) {
+    private HashMap<String, String> queryForNamePhone(String OrderId) {
         HashMap<String, String> expressionAttributesNames = new HashMap<>();
         expressionAttributesNames.put("#OrderId", "OrderId");
         HashMap<String, AttributeValue> expressionAttributeValues = new HashMap<>();
@@ -106,13 +121,14 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
             Map<String, String> newMap = attributeValue.get(i)
                     .entrySet()
                     .stream()
-                    .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().getS()));
+                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getS()));
             finalResults.add(newMap);
         }
 
 
         map.put("name", finalResults.get(0).get("name"));
         map.put("phone", finalResults.get(0).get("phone"));
+        map.put("availability", finalResults.get(0).get("availability"));
 
         return map;
     }
