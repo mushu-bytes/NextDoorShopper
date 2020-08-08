@@ -44,22 +44,22 @@ public class WriteToTable implements RequestHandler<APIGatewayProxyRequestEvent,
             //use the map in order to get the value(string)
             AttributeValue OrderId = new AttributeValue().withS(id);
             AttributeValue name = new AttributeValue().withS(jMap.get("name"));
-            AttributeValue address = new AttributeValue().withS(jMap.get("address"));
-            AttributeValue cost = new AttributeValue().withS(jMap.get("cost"));
             AttributeValue phone = new AttributeValue().withS(jMap.get("phone"));
-
+            AttributeValue zipcode = new AttributeValue().withS(jMap.get("zipcode"));
+            AttributeValue address = new AttributeValue().withS(jMap.get("address"));
             AttributeValue order = new AttributeValue().withS(jMap.get("order"));
             AttributeValue availability = new AttributeValue().withS("Active");
+            AttributeValue permissions = new AttributeValue().withS("Undecided");
 
             //put all the attribute values in another map<String, AttributeValue>
             map.put("OrderId", OrderId);
             map.put("name", name);
-            map.put("address", address);
-            map.put("cost", cost);
             map.put("phone", phone);
-
+            map.put("Zipcode", zipcode);
             map.put("order", order);
             map.put("availability", availability);
+            map.put("address", address);
+            map.put("permissions", permissions);
             //call the function putrequest
             putRequest(map);
             //return the JSON status stuff

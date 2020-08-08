@@ -8,18 +8,19 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-
-import com.amazonaws.services.sns.AmazonSNS;
-import com.amazonaws.services.sns.AmazonSNSClientBuilder;
-import com.amazonaws.services.sns.model.PublishRequest;
-import com.amazonaws.services.sns.model.PublishResult;
+import com.amazonaws.services.pinpoint.AmazonPinpoint;
+import com.amazonaws.services.pinpoint.AmazonPinpointClientBuilder;
+import com.amazonaws.services.pinpoint.model.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
-
+//maybe i can use this after the session expires.
 public class SendOrder implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
     private final AmazonDynamoDB ddb = AmazonDynamoDBClientBuilder
@@ -28,7 +29,8 @@ public class SendOrder implements RequestHandler<APIGatewayProxyRequestEvent, AP
             .build();
 
 
-    private final AmazonSNS amazonSNS = AmazonSNSClientBuilder.defaultClient();
+    private final AmazonPinpoint client = AmazonPinpointClientBuilder.standard()
+            .build();
 
     private HashMap<String, String> map = new HashMap<>();
     private HashMap<String, AttributeValue> attributeMap = new HashMap<>();
@@ -52,6 +54,7 @@ public class SendOrder implements RequestHandler<APIGatewayProxyRequestEvent, AP
 
             //get the data associated with that orderid
             smsMap = queryForOrderId(OrderId);
+            //check if pending
             String availability = smsMap.get("availability");
 
             if (availability.equals("Pending")) {
@@ -67,13 +70,13 @@ public class SendOrder implements RequestHandler<APIGatewayProxyRequestEvent, AP
 
             AttributeValue volunteer = new AttributeValue().withS(jMap.get("volunteer"));
             AttributeValue phoneNumber = new AttributeValue().withS(jMap.get("phoneNumber"));
-            AttributeValue verification = new AttributeValue().withS(jMap.get("verification"));
+
 
             //put into dynamoDb
 
             attributeMap.put("volunteer", volunteer);
             attributeMap.put("PhoneNumber", phoneNumber);
-            attributeMap.put("verification", verification);
+
             //put volunteer data into dynamodb
             putInfo(attributeMap, OrderId);
 
@@ -122,8 +125,6 @@ public class SendOrder implements RequestHandler<APIGatewayProxyRequestEvent, AP
 
         map.put("name", finalResults.get(0).get("name"));
         map.put("order", finalResults.get(0).get("order"));
-        map.put("reward", finalResults.get(0).get("cost"));
-        map.put("address", finalResults.get(0).get("address"));
         map.put("availability", finalResults.get(0).get("availability"));
 
 
@@ -134,26 +135,41 @@ public class SendOrder implements RequestHandler<APIGatewayProxyRequestEvent, AP
 
         String customer = smsMap.get("name").toString();
         String order = smsMap.get("order").toString();
-        String reward = smsMap.get("reward").toString();
-        String address = smsMap.get("address").toString();
+
+        //String address = smsMap.get("address").toString();
 
         String message = "Hello " + name + ", here is your request:" +
-                "             Customer: " + customer + " | Order: " + order +
-                " | Reward: " + reward + " dollars | Address: " + address
+                "             Customer: " + customer + " | Order: " + order;
                 //"           Text 'COMPLETE' in all caps once you have successfully delivered your order." +
                 //"   Remember to always wear a mask and gloves at all times and beware of entering any dangerous areas."
                 ;
 
         String phoneNumber = "+1" + phone;
+        String originationNumber = "+19095314210";
+        String appId = "ac3bd51844c644b9affc6df79c3434ea";
+        String messageType = "TRANSACTIONAL";
 
-        PublishResult result = amazonSNS.publish(new PublishRequest()
-                .withMessage(message)
-                .withPhoneNumber(phoneNumber));
-        System.out.println(result);
+        Map<String, AddressConfiguration> addressMap =
+                new HashMap<>();
 
-        System.out.println("Inside SMS");
+        addressMap.put(phoneNumber, new AddressConfiguration()
+                .withChannelType(ChannelType.SMS));
+
+        SendMessagesRequest request = new SendMessagesRequest()
+                .withApplicationId(appId)
+                .withMessageRequest(new MessageRequest()
+                .withAddresses(addressMap)
+                .withMessageConfiguration(new DirectMessageConfiguration()
+                    .withSMSMessage(new SMSMessage()
+                        .withBody(message)
+                        .withMessageType(messageType)
+                        .withOriginationNumber(originationNumber)
+                        )));
+        client.sendMessages(request);
+
     }
     private void putInfo(Map<String, AttributeValue> parameters, String OrderId) {
+        //volunteer
         Map<String, AttributeValue> key = new HashMap<>();
         key.put("OrderId", new AttributeValue().withS(OrderId));
 
@@ -174,31 +190,18 @@ public class SendOrder implements RequestHandler<APIGatewayProxyRequestEvent, AP
         keyPhone.put("OrderId", new AttributeValue().withS(OrderId));
 
         Map<String, AttributeValue> attributeValuesPhone = new HashMap<>();
-        attributeValuesPhone.put(":PhoneNumber", parameters.get("PhoneNumber"));
+        attributeValuesPhone.put(":VolunteerPhoneNumber", parameters.get("PhoneNumber"));
 
         UpdateItemRequest updateItemRequestPhone = new UpdateItemRequest()
                 .withTableName(TABLE_NAME)
                 .withKey(keyPhone)
-                .withUpdateExpression("set PhoneNumber = :PhoneNumber")
+                .withUpdateExpression("set VolunteerPhoneNumber = :VolunteerPhoneNumber")
                 .withExpressionAttributeValues(attributeValuesPhone);
 
         UpdateItemResult resultPhone = ddb.updateItem(updateItemRequestPhone);
 
 
-        //verification
-        Map<String, AttributeValue> keyVerify = new HashMap<>();
-        keyVerify.put("OrderId", new AttributeValue().withS(OrderId));
 
-        Map<String, AttributeValue> attributeValuesVerify = new HashMap<>();
-        attributeValuesVerify.put(":verification", parameters.get("verification"));
-
-        UpdateItemRequest updateItemRequestVerify = new UpdateItemRequest()
-                .withTableName(TABLE_NAME)
-                .withKey(keyVerify)
-                .withUpdateExpression("set verification = :verification")
-                .withExpressionAttributeValues(attributeValuesVerify);
-
-        UpdateItemResult resultVerify = ddb.updateItem(updateItemRequestVerify);
 
     }
 }

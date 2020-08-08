@@ -8,10 +8,6 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-import com.amazonaws.services.sns.AmazonSNS;
-import com.amazonaws.services.sns.AmazonSNSClientBuilder;
-import com.amazonaws.services.sns.model.PublishRequest;
-import com.amazonaws.services.sns.model.PublishResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -32,9 +28,10 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
     private Map<String, String> jMap;
 
     HashMap <String, String> map = new HashMap<>();
-    private HashMap<String, String> smsMap = new HashMap<>();
+    private HashMap<String, String> customerMap = new HashMap<>();
+    private HashMap<String, AttributeValue> attributeMap = new HashMap<>();
 
-    private final AmazonSNS amazonSNS = AmazonSNSClientBuilder.defaultClient();
+
 
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
 
@@ -53,9 +50,9 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
                     .withStatusCode(500);
         }
         String OrderId = jMap.get("OrderId");
-        smsMap = queryForNamePhone(OrderId);
+        customerMap = queryForNamePhone(OrderId);
 
-        String availability = smsMap.get("availability");
+        String availability = customerMap.get("availability");
 
         if (availability.equals("Pending")){
             return new APIGatewayProxyResponseEvent()
@@ -64,11 +61,13 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
                     .withStatusCode(400);
         }
         else{
-            System.out.println("Inside update customer");
-            //update dynanodb
-            //send txt message to customer
-            updateCustomer(smsMap);
-            UpdateOrder(OrderId);
+            AttributeValue volunteer = new AttributeValue().withS(jMap.get("volunteer"));
+            AttributeValue phoneNumber = new AttributeValue().withS(jMap.get("phoneNumber"));
+
+            attributeMap.put("volunteer", volunteer);
+            attributeMap.put("PhoneNumber", phoneNumber);
+
+            UpdateOrder(attributeMap, OrderId);
         }
         //For Cors
         System.out.println(header);
@@ -80,7 +79,7 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
 
     }
 
-    private void UpdateOrder(String OrderId) {
+    private void UpdateOrder(Map<String, AttributeValue> parameters, String OrderId) {
 
         Map<String, AttributeValue> key = new HashMap<>();
         key.put("OrderId", new AttributeValue().withS(OrderId));
@@ -95,6 +94,37 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
                 .withExpressionAttributeValues(attributeValues);
 
         UpdateItemResult updateItemResult = ddb.updateItem(updateItemRequest);
+
+        //volunteer
+        Map<String, AttributeValue> keyVolunteer = new HashMap<>();
+        keyVolunteer.put("OrderId", new AttributeValue().withS(OrderId));
+
+        Map<String, AttributeValue> attributeValuesVolunteer = new HashMap<>();
+        attributeValuesVolunteer.put(":volunteer", parameters.get("volunteer"));
+
+        UpdateItemRequest updateItemRequestVolunteer = new UpdateItemRequest()
+                .withTableName(TABLE_NAME)
+                .withKey(key)
+                .withUpdateExpression("set volunteer = :volunteer")
+                .withExpressionAttributeValues(attributeValuesVolunteer);
+
+        UpdateItemResult resultVolunteer = ddb.updateItem(updateItemRequestVolunteer);
+
+
+        //phonenumber
+        Map<String, AttributeValue> keyPhone = new HashMap<>();
+        keyPhone.put("OrderId", new AttributeValue().withS(OrderId));
+
+        Map<String, AttributeValue> attributeValuesPhone = new HashMap<>();
+        attributeValuesPhone.put(":VolunteerPhoneNumber", parameters.get("PhoneNumber"));
+
+        UpdateItemRequest updateItemRequestPhone = new UpdateItemRequest()
+                .withTableName(TABLE_NAME)
+                .withKey(keyPhone)
+                .withUpdateExpression("set VolunteerPhoneNumber = :VolunteerPhoneNumber")
+                .withExpressionAttributeValues(attributeValuesPhone);
+
+        UpdateItemResult resultPhone = ddb.updateItem(updateItemRequestPhone);
 
 
 
@@ -130,23 +160,10 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
         map.put("phone", finalResults.get(0).get("phone"));
         map.put("availability", finalResults.get(0).get("availability"));
 
+
         return map;
     }
 
-    private void updateCustomer(HashMap smsMap) {
-        String customer = smsMap.get("name").toString();
-        String phoneNumber = smsMap.get("phone").toString();
-
-        String message = "Hello " + customer + ", thank you for using NextDoorShopper! A kind person " +
-                "has just volunteered to pick up your order and will arrive shortly.";
-
-        String phone = "+1" + phoneNumber;
-
-        PublishResult result = amazonSNS.publish(new PublishRequest()
-            .withMessage(message)
-            .withPhoneNumber(phone));
-
-        System.out.println(result);
 
 
 
@@ -167,6 +184,9 @@ public class PendingOrder implements RequestHandler <APIGatewayProxyRequestEvent
 
 
 
-    }
+
+
+
+
 
 }

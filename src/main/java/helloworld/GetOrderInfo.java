@@ -29,8 +29,6 @@ public class GetOrderInfo implements RequestHandler<APIGatewayProxyRequestEvent,
 
     private APIGatewayProxyResponseEvent GetLocation() {
 
-        //scan via addresses
-        List<String> addresses = new ArrayList<>();
         //returns EVERYTHING
         ScanRequest scanRequest = new ScanRequest()
                 .withTableName(TABLE_NAME);
