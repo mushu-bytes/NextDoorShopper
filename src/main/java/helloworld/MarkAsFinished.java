@@ -37,8 +37,8 @@ public class MarkAsFinished implements RequestHandler<SNSEvent, APIGatewayProxyR
     private static final String CUSTOMER_INDEX_NAME = "phone-index";
     private static final String VOLUNTEER_INDEX_NAME = "VolunteerPhoneNumber-index";
 
-    HashMap<String, String> customerKeyMap = new HashMap<>();
-    HashMap<String, String> volunteerKeyMap = new HashMap<>();
+
+
     HashMap<String, String> customerMap = new HashMap();
     HashMap<String, String> namePhoneMap = new HashMap();
 
@@ -90,6 +90,8 @@ public class MarkAsFinished implements RequestHandler<SNSEvent, APIGatewayProxyR
     }
 
     private String queryForKeyCustomer(String phoneNumber) {
+        HashMap<String, String> customerKeyMap = new HashMap<>();
+
         HashMap<String, String> expressionAttributeNames = new HashMap<>();
         expressionAttributeNames.put("#phone", "phone");
         HashMap<String, AttributeValue> expressionAttributeValues = new HashMap<>();
@@ -120,6 +122,7 @@ public class MarkAsFinished implements RequestHandler<SNSEvent, APIGatewayProxyR
     }
 
     private String queryForKeyVolunteer(String phoneNumber) {
+        HashMap<String, String> volunteerKeyMap = new HashMap<>();
         HashMap<String, String> expressionAttributeNames = new HashMap<>();
         expressionAttributeNames.put("#VolunteerPhoneNumber", "VolunteerPhoneNumber");
         HashMap<String, AttributeValue> expressionAttributeValues = new HashMap<>();
@@ -153,22 +156,18 @@ public class MarkAsFinished implements RequestHandler<SNSEvent, APIGatewayProxyR
     private void updateOrder(String OrderId, String body) {
 
         if (body.equals("COMPLETE")) {
-            Map<String, AttributeValue> key = new HashMap<>();
-            key.put("OrderId", new AttributeValue().withS(OrderId));
-
-            Map<String, AttributeValue> attributeValues = new HashMap<>();
-            attributeValues.put(":availability", new AttributeValue().withS("Completed"));
-
-            UpdateItemRequest updateItemRequest = new UpdateItemRequest()
-                    .withTableName(TABLE_NAME)
-                    .withKey(key)
-                    .withUpdateExpression("set availability = :availability")
-                    .withExpressionAttributeValues(attributeValues);
-
-            UpdateItemResult updateItemResult = ddb.updateItem(updateItemRequest);
 
             namePhoneMap = queryForCustomerVolunteer(OrderId);
             completeOrder(namePhoneMap);
+
+            Map<String, AttributeValue> key = new HashMap<>();
+            key.put("OrderId", new AttributeValue().withS(OrderId));
+
+            DeleteItemRequest deleteOrder = new DeleteItemRequest()
+                    .withTableName(TABLE_NAME)
+                    .withKey(key);
+            ddb.deleteItem(deleteOrder);
+
 
         }
 
@@ -272,7 +271,7 @@ public class MarkAsFinished implements RequestHandler<SNSEvent, APIGatewayProxyR
         String volunteerPhoneNumber = smsMap.get("VolunteerPhoneNumber").toString();
 
         String message = "Hello " + customer + ", unfortunately the person that volunteered to " +
-                "pick up your order is unable to complete it. We will find a replacement " +
+                "pick up your order is currently unavailable,but We will find a replacement " +
                 "as soon as possible";
 
         String phoneNumber = "+1" + phone;
@@ -300,7 +299,7 @@ public class MarkAsFinished implements RequestHandler<SNSEvent, APIGatewayProxyR
         client.sendMessages(request);
 
         String volunteerMessage = "Hello " + volunteer + ", unfortunately the person that volunteered to " +
-                "pick up your order is unable to complete it. We will find a replacement " +
+                "pick up your order is currently unavailable, but we will find a replacement " +
                 "as soon as possible";
 
         String phoneNumberVolunteer = "+1" + volunteerPhoneNumber;

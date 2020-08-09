@@ -146,8 +146,8 @@ public class SendInfo implements RequestHandler <APIGatewayProxyRequestEvent, AP
                 proxyPhoneNumber + " to contact your client, get to know them," +
                 " and schedule a delivery. The phone number will expire in 1 hour. Remember you may always opt" +
                 " out if you do not feel comfortable disclosing any sensitive information to them. " +
-                "Reply 'REJECT ORDER' if you do not wish to go through with the delivery, 'COMPLETE' when " +
-                "you have finished your order, and 'INCOMPLETE' if you are unable to carry out" +
+                "Reply 'Reject Order' if you do not wish to go through with the delivery, 'Complete' when " +
+                "you have finished your order, and 'Incomplete' if you are unable to carry out" +
                 "your delivery.";
 
         String phoneNumber = "+1" + Phone;

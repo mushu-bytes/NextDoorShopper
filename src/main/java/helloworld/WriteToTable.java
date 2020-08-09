@@ -46,7 +46,6 @@ public class WriteToTable implements RequestHandler<APIGatewayProxyRequestEvent,
             AttributeValue name = new AttributeValue().withS(jMap.get("name"));
             AttributeValue phone = new AttributeValue().withS(jMap.get("phone"));
             AttributeValue zipcode = new AttributeValue().withS(jMap.get("zipcode"));
-            AttributeValue address = new AttributeValue().withS(jMap.get("address"));
             AttributeValue order = new AttributeValue().withS(jMap.get("order"));
             AttributeValue availability = new AttributeValue().withS("Active");
             AttributeValue permissions = new AttributeValue().withS("Undecided");
@@ -58,7 +57,6 @@ public class WriteToTable implements RequestHandler<APIGatewayProxyRequestEvent,
             map.put("Zipcode", zipcode);
             map.put("order", order);
             map.put("availability", availability);
-            map.put("address", address);
             map.put("permissions", permissions);
             //call the function putrequest
             putRequest(map);
